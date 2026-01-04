@@ -1,5 +1,5 @@
 import type { Candidate } from '../types';
-import { X, Download, User, CheckCircle, XCircle, Mail, Phone, MapPin, Calendar, Briefcase, Linkedin, Globe } from 'lucide-react';
+import { X, Download, CheckCircle, XCircle, Mail, Phone, MapPin, Briefcase, Linkedin, Globe } from 'lucide-react';
 import CandidateStatusBadge from './CandidateStatusBadge';
 
 interface CandidateAnalysisModalProps {
@@ -150,7 +150,7 @@ const CandidateAnalysisModal = ({ candidate, isOpen, onClose, onAccept, onReject
                                                 <td className="px-6 py-4 text-slate-600 text-xs leading-relaxed">{item.description}</td>
                                                 <td className="px-6 py-4 text-right">
                                                     <span className={`inline-block px-2 py-1 rounded-md text-xs font-bold ${item.score >= 80 ? 'bg-green-100 text-green-700' :
-                                                            item.score >= 50 ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-700'
+                                                        item.score >= 50 ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-700'
                                                         }`}>
                                                         {item.score}%
                                                     </span>

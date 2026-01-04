@@ -38,7 +38,7 @@ export interface CreateBatchPayload {
 
 export interface UploadCandidatePayload {
   name: string;
-  email: string;
+  email?: string;
   cvText: string;
   cvFile?: string; // base64 encoded
   cvFileName?: string;
