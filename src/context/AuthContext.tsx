@@ -1,8 +1,9 @@
-import { createContext, useContext, useState, type ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, type ReactNode } from 'react';
 import type { User, AuthState } from '../types';
+import api from '../services/api';
 
 interface AuthContextType extends AuthState {
-    login: (email: string) => void;
+    login: (username: string, password: string) => Promise<void>;
     logout: () => void;
 }
 
@@ -14,17 +15,41 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         isAuthenticated: false,
     });
 
-    const login = (email: string) => {
-        // Mock login logic
-        const user: User = {
-            id: '1',
-            email,
-            name: email.split('@')[0],
-        };
-        setAuth({ user, isAuthenticated: true });
+    useEffect(() => {
+        // Restore session from localStorage
+        const token = localStorage.getItem('token');
+        const userStr = localStorage.getItem('user');
+
+        if (token && userStr) {
+            try {
+                const user = JSON.parse(userStr);
+                setAuth({ user, isAuthenticated: true });
+            } catch (e) {
+                // Invalid user data
+                localStorage.removeItem('token');
+                localStorage.removeItem('user');
+            }
+        }
+    }, []);
+
+    const login = async (username: string, password: string) => {
+        try {
+            const response = await api.login({ username, password });
+
+            // Save to localStorage
+            localStorage.setItem('token', response.token);
+            localStorage.setItem('user', JSON.stringify(response.user));
+
+            setAuth({ user: response.user, isAuthenticated: true });
+        } catch (error: any) {
+            console.error('Login failed', error);
+            throw new Error(error.response?.data?.error || 'Login failed');
+        }
     };
 
     const logout = () => {
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
         setAuth({ user: null, isAuthenticated: false });
     };
 

@@ -1,31 +1,11 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Plus, Briefcase, Calendar, UploadCloud, X } from 'lucide-react';
-import type { Job, AssessmentMatrix, Candidate } from '../types';
+import type { Job, AssessmentMatrix } from '../types';
 import AssessmentMatrixInput from '../components/AssessmentMatrixInput';
 import SkillSelector from '../components/SkillSelector';
 import FileUpload from '../components/FileUpload';
-
-// Mock Data
-const MOCK_JOBS: Job[] = [
-    {
-        id: 'j1',
-        title: 'Frontend Engineer',
-        department: 'Engineering',
-        description: 'React & TypeScript focus',
-        matrix: [
-            { id: 'm1', name: 'Technical Skills', weight: 40 },
-            { id: 'm2', name: 'Education', weight: 20 },
-            { id: 'm3', name: 'Experience', weight: 40 }
-        ],
-        clusters: 3,
-        requiredSkills: ['React', 'TypeScript'],
-        batches: [
-            { id: 'b1', name: 'Week 1 - Oct', jobId: 'j1', status: 'active', candidates: [], createdAt: '2023-10-01' },
-            { id: 'b2', name: 'Week 2 - Oct', jobId: 'j1', status: 'archived', candidates: [], createdAt: '2023-10-08' }
-        ],
-        createdAt: '2023-09-30'
-    }
-];
+import api from '../services/api';
+import { extractTextFromPDF, fileToBase64 } from '../utils/fileHelpers';
 
 const DEFAULT_MATRIX: AssessmentMatrix = [
     { id: 'def-1', name: 'Technical Skills', weight: 40 },
@@ -34,11 +14,13 @@ const DEFAULT_MATRIX: AssessmentMatrix = [
 ];
 
 const Jobs = () => {
-    const [jobs, setJobs] = useState<Job[]>(MOCK_JOBS);
+    const [jobs, setJobs] = useState<Job[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
     const [isCreatingJob, setIsCreatingJob] = useState(false);
     const [newJob, setNewJob] = useState<Partial<Job>>({
         title: '',
         department: '',
+        description: '',
         matrix: DEFAULT_MATRIX,
         clusters: 3,
         requiredSkills: []
@@ -47,8 +29,28 @@ const Jobs = () => {
     const [uploadModal, setUploadModal] = useState<{ isOpen: boolean; batchId: string; jobId: string } | null>(null);
     const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
     const [isProcessing, setIsProcessing] = useState(false);
+    const [error, setError] = useState<string | null>(null);
 
-    const handleCreateJob = () => {
+    // Fetch jobs on mount
+    useEffect(() => {
+        loadJobs();
+    }, []);
+
+    const loadJobs = async () => {
+        try {
+            setIsLoading(true);
+            setError(null);
+            const data = await api.getJobs();
+            setJobs(data);
+        } catch (err: any) {
+            setError(err.message || 'Failed to load jobs');
+            console.error('Error loading jobs:', err);
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    const handleCreateJob = async () => {
         if (!newJob.title || !newJob.matrix) return;
 
         // Validate matrix
@@ -58,75 +60,88 @@ const Jobs = () => {
             return;
         }
 
-        const job: Job = {
-            id: Math.random().toString(36).substr(2, 9),
-            title: newJob.title,
-            department: newJob.department || 'Engineering', // Default to Engineering since we use Description now
-            description: newJob.description || '',
-            matrix: newJob.matrix,
-            clusters: newJob.clusters || 3,
-            requiredSkills: newJob.requiredSkills || [],
-            batches: [],
-            createdAt: new Date().toISOString()
-        };
+        try {
+            setError(null);
+            const createdJob = await api.createJob({
+                title: newJob.title,
+                department: newJob.department || 'Engineering',
+                description: newJob.description || '',
+                matrix: newJob.matrix,
+                clusters: newJob.clusters || 3,
+                requiredSkills: newJob.requiredSkills || []
+            });
 
-        setJobs([...jobs, job]);
-        setIsCreatingJob(false);
-        setNewJob({
-            title: '',
-            department: '',
-            matrix: [
-                { id: Math.random().toString(36), name: 'Technical Skills', weight: 40 },
-                { id: Math.random().toString(36), name: 'Education', weight: 20 },
-                { id: Math.random().toString(36), name: 'Experience', weight: 40 }
-            ],
-            clusters: 3,
-            requiredSkills: []
-        });
+            // Add to local state
+            setJobs([createdJob, ...jobs]);
+            setIsCreatingJob(false);
+            setNewJob({
+                title: '',
+                department: '',
+                description: '',
+                matrix: DEFAULT_MATRIX,
+                clusters: 3,
+                requiredSkills: []
+            });
+        } catch (err: any) {
+            setError(err.message || 'Failed to create job');
+            alert('Failed to create job: ' + (err.message || 'Unknown error'));
+        }
     };
 
-    const handleAddBatch = (jobId: string) => {
+    const handleAddBatch = async (jobId: string) => {
         const batchName = prompt('Enter Batch Name (e.g., Week 3):');
         if (!batchName) return;
 
-        setJobs(jobs.map(job => {
-            if (job.id === jobId) {
-                return {
-                    ...job,
-                    batches: [
-                        ...job.batches,
-                        {
-                            id: Math.random().toString(36).substr(2, 9),
-                            name: batchName,
-                            jobId: job.id,
-                            status: 'active',
-                            candidates: [],
-                            createdAt: new Date().toISOString()
-                        }
-                    ]
-                };
-            }
-            return job;
-        }));
+        try {
+            setError(null);
+            const createdBatch = await api.createBatch(jobId, { name: batchName });
+
+            // Update local state
+            setJobs(jobs.map(job => {
+                if (job.id === jobId) {
+                    return {
+                        ...job,
+                        batches: [...job.batches, createdBatch]
+                    };
+                }
+                return job;
+            }));
+        } catch (err: any) {
+            setError(err.message || 'Failed to create batch');
+            alert('Failed to create batch: ' + (err.message || 'Unknown error'));
+        }
     };
 
-    const handleUploadFiles = () => {
+    const handleUploadFiles = async () => {
         if (!uploadModal || selectedFiles.length === 0) return;
 
         setIsProcessing(true);
+        setError(null);
 
-        // Simulate Upload & Processing
-        setTimeout(() => {
-            const newCandidates: Candidate[] = selectedFiles.map((file) => ({
-                id: Math.random().toString(36).substr(2, 9),
-                name: file.name.replace('.pdf', ''), // Mock name from filename
-                email: 'candidate@example.com',
-                skills: ['React', 'TypeScript'], // Mock skills
-                status: 'processing',
-                submissionDate: new Date().toLocaleDateString(),
-                score: 0
-            }));
+        try {
+            // Convert files to base64 and prepare candidates
+            const candidates = await Promise.all(
+                selectedFiles.map(async (file) => {
+                    const base64 = await fileToBase64(file);
+                    // Extract text from PDF
+                    const text = await extractTextFromPDF(file);
 
+                    const name = file.name.replace('.pdf', '').replace(/_/g, ' ');
+
+                    return {
+                        name,
+                        // email: removed, handled by backend extraction
+                        cvText: text,
+                        cvFile: base64,
+                        cvFileName: file.name
+                    };
+                })
+            );
+
+            // Upload to backend
+            const uploadedCandidates = await api.uploadCandidates(uploadModal.batchId, { candidates });
+
+            // Update local state
             setJobs(jobs.map(job => {
                 if (job.id === uploadModal.jobId) {
                     return {
@@ -135,7 +150,7 @@ const Jobs = () => {
                             if (batch.id === uploadModal.batchId) {
                                 return {
                                     ...batch,
-                                    candidates: [...batch.candidates, ...newCandidates]
+                                    candidates: [...batch.candidates, ...uploadedCandidates]
                                 };
                             }
                             return batch;
@@ -148,12 +163,30 @@ const Jobs = () => {
             setIsProcessing(false);
             setUploadModal(null);
             setSelectedFiles([]);
-            alert('CVs uploaded and added to processing queue.');
-        }, 1500);
+            alert(`Successfully uploaded ${uploadedCandidates.length} CVs!`);
+        } catch (err: any) {
+            setError(err.message || 'Failed to upload CVs');
+            alert('Failed to upload CVs: ' + (err.message || 'Unknown error'));
+            setIsProcessing(false);
+        }
     };
+
+    if (isLoading) {
+        return (
+            <div className="flex items-center justify-center h-64">
+                <div className="text-slate-500">Loading jobs...</div>
+            </div>
+        );
+    }
 
     return (
         <div className="space-y-6">
+            {error && (
+                <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
+                    {error}
+                </div>
+            )}
+
             <div className="flex items-center justify-between">
                 <div>
                     <h2 className="text-2xl font-bold text-slate-900">Recruitment Jobs</h2>
@@ -262,7 +295,7 @@ const Jobs = () => {
 
                                         <div className="flex items-center justify-between pt-2 border-t border-slate-100">
                                             <span className="text-xs text-slate-600">
-                                                {batch.candidates.length} Candidates
+                                                {batch.candidates?.length || 0} Candidates
                                             </span>
                                             <button
                                                 onClick={(e) => {
@@ -284,6 +317,11 @@ const Jobs = () => {
                         </div>
                     </div>
                 ))}
+                {jobs.length === 0 && !isCreatingJob && (
+                    <div className="text-center py-12 text-slate-500">
+                        No jobs yet. Create your first job to get started!
+                    </div>
+                )}
             </div>
 
             {/* Upload Modal */}

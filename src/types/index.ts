@@ -32,12 +32,18 @@ export interface Candidate {
   phone?: string;
   jobTitle?: string; // e.g., Backend Engineer
   batch?: string;
+  batchId?: string;
   submissionDate?: string;
   skills: string[];
   status: CandidateStatus;
   score?: number;
   evaluation?: EvaluationResult[];
   summary?: string;
+  // CV File metadata
+  cvFileKey?: string;
+  cvFileName?: string;
+  cvFileSize?: number;
+  cvMimeType?: string;
 }
 
 export interface Batch {

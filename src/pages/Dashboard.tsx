@@ -1,15 +1,57 @@
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Briefcase, Users, Activity, ExternalLink } from 'lucide-react';
+import api from '../services/api';
+import type { Job } from '../types';
 
 const Dashboard = () => {
     const navigate = useNavigate();
+    const [jobs, setJobs] = useState<Job[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
 
-    // Mock stats
+    useEffect(() => {
+        loadDashboardData();
+    }, []);
+
+    const loadDashboardData = async () => {
+        try {
+            const data = await api.getJobs();
+            setJobs(data);
+        } catch (err) {
+            console.error('Error loading dashboard data:', err);
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    // Calculate stats from real data
+    const totalCandidates = jobs.reduce((sum, job) =>
+        sum + job.batches.reduce((batchSum, batch) =>
+            batchSum + (batch.candidates?.length || 0), 0
+        ), 0
+    );
+
+    const totalBatches = jobs.reduce((sum, job) => sum + job.batches.length, 0);
+
     const stats = [
-        { label: 'Active Jobs', value: '3', icon: <Briefcase size={24} className="text-blue-600" />, color: 'bg-blue-100' },
-        { label: 'Total Candidates', value: '128', icon: <Users size={24} className="text-purple-600" />, color: 'bg-purple-100' },
-        { label: 'Screening Batches', value: '12', icon: <Activity size={24} className="text-green-600" />, color: 'bg-green-100' },
+        { label: 'Active Jobs', value: jobs.length.toString(), icon: <Briefcase size={24} className="text-blue-600" />, color: 'bg-blue-100' },
+        { label: 'Total Candidates', value: totalCandidates.toString(), icon: <Users size={24} className="text-purple-600" />, color: 'bg-purple-100' },
+        { label: 'Screening Batches', value: totalBatches.toString(), icon: <Activity size={24} className="text-green-600" />, color: 'bg-green-100' },
     ];
+
+    // Get recent batches for activity feed
+    const recentBatches = jobs
+        .flatMap(job => job.batches.map(batch => ({ ...batch, jobTitle: job.title })))
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+        .slice(0, 5);
+
+    if (isLoading) {
+        return (
+            <div className="flex items-center justify-center h-64">
+                <div className="text-slate-500">Loading dashboard...</div>
+            </div>
+        );
+    }
 
     return (
         <div className="space-y-8 animate-in fade-in duration-500">
@@ -43,17 +85,28 @@ const Dashboard = () => {
                     </button>
                 </div>
                 <div className="divide-y divide-slate-100">
-                    {[1, 2, 3].map((item) => (
-                        <div key={item} className="p-4 hover:bg-slate-50 transition-colors flex items-center justify-between">
-                            <div className="flex items-center gap-3">
-                                <div className="h-2 w-2 rounded-full bg-blue-500"></div>
-                                <div>
-                                    <p className="text-sm font-medium text-slate-800">New batch "Week 4" created</p>
-                                    <p className="text-xs text-slate-500">Frontend Engineer • 2 hours ago</p>
+                    {recentBatches.length > 0 ? (
+                        recentBatches.map((batch) => (
+                            <div key={batch.id} className="p-4 hover:bg-slate-50 transition-colors flex items-center justify-between">
+                                <div className="flex items-center gap-3">
+                                    <div className={`h-2 w-2 rounded-full ${batch.status === 'active' ? 'bg-blue-500' : 'bg-slate-400'}`}></div>
+                                    <div>
+                                        <p className="text-sm font-medium text-slate-800">Batch "{batch.name}" created</p>
+                                        <p className="text-xs text-slate-500">
+                                            {batch.jobTitle} • {new Date(batch.createdAt).toLocaleDateString()}
+                                        </p>
+                                    </div>
                                 </div>
+                                <span className="text-xs text-slate-500">
+                                    {batch.candidates?.length || 0} candidates
+                                </span>
                             </div>
+                        ))
+                    ) : (
+                        <div className="p-8 text-center text-slate-400">
+                            No recent activity. Create a job to get started!
                         </div>
-                    ))}
+                    )}
                 </div>
             </div>
         </div>
