@@ -13,6 +13,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const [auth, setAuth] = useState<AuthState>({
         user: null,
         isAuthenticated: false,
+        isLoading: true,
     });
 
     useEffect(() => {
@@ -23,12 +24,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         if (token && userStr) {
             try {
                 const user = JSON.parse(userStr);
-                setAuth({ user, isAuthenticated: true });
+                setAuth({ user, isAuthenticated: true, isLoading: false });
             } catch (e) {
                 // Invalid user data
                 localStorage.removeItem('token');
                 localStorage.removeItem('user');
+                setAuth(prev => ({ ...prev, isLoading: false }));
             }
+        } else {
+            setAuth(prev => ({ ...prev, isLoading: false }));
         }
     }, []);
 
@@ -40,7 +44,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             localStorage.setItem('token', response.token);
             localStorage.setItem('user', JSON.stringify(response.user));
 
-            setAuth({ user: response.user, isAuthenticated: true });
+            setAuth({ user: response.user, isAuthenticated: true, isLoading: false });
         } catch (error: any) {
             console.error('Login failed', error);
             throw new Error(error.response?.data?.error || 'Login failed');
@@ -50,7 +54,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const logout = () => {
         localStorage.removeItem('token');
         localStorage.removeItem('user');
-        setAuth({ user: null, isAuthenticated: false });
+        setAuth({ user: null, isAuthenticated: false, isLoading: false });
     };
 
     return (

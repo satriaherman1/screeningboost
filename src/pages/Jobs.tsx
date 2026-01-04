@@ -112,62 +112,74 @@ const Jobs = () => {
         }
     };
 
+    const [processingStatus, setProcessingStatus] = useState<string | null>(null);
+
     const handleUploadFiles = async () => {
         if (!uploadModal || selectedFiles.length === 0) return;
 
         setIsProcessing(true);
         setError(null);
 
-        try {
-            // Convert files to base64 and prepare candidates
-            const candidates = await Promise.all(
-                selectedFiles.map(async (file) => {
-                    const base64 = await fileToBase64(file);
-                    // Extract text from PDF
-                    const text = await extractTextFromPDF(file);
+        let successCount = 0;
+        let failCount = 0;
+        const totalFiles = selectedFiles.length;
 
+        try {
+            // Process files sequentially (Chunk of 1)
+            for (let i = 0; i < totalFiles; i++) {
+                const file = selectedFiles[i];
+                setProcessingStatus(`Uploading ${i + 1} of ${totalFiles}: ${file.name}...`);
+
+                try {
+                    const base64 = await fileToBase64(file);
+                    const text = await extractTextFromPDF(file);
                     const name = file.name.replace('.pdf', '').replace(/_/g, ' ');
 
-                    return {
+                    const candidatePayload = {
                         name,
-                        // email: removed, handled by backend extraction
                         cvText: text,
                         cvFile: base64,
                         cvFileName: file.name
                     };
-                })
-            );
 
-            // Upload to backend
-            const uploadedCandidates = await api.uploadCandidates(uploadModal.batchId, { candidates });
+                    // Upload single candidate (or small batch)
+                    const uploadedCandidates = await api.uploadCandidates(uploadModal.batchId, { candidates: [candidatePayload] });
 
-            // Update local state
-            setJobs(jobs.map(job => {
-                if (job.id === uploadModal.jobId) {
-                    return {
-                        ...job,
-                        batches: job.batches.map(batch => {
-                            if (batch.id === uploadModal.batchId) {
-                                return {
-                                    ...batch,
-                                    candidates: [...batch.candidates, ...uploadedCandidates]
-                                };
-                            }
-                            return batch;
-                        })
-                    };
+                    // Update local state immediately for better UX
+                    setJobs(prevJobs => prevJobs.map(job => {
+                        if (job.id === uploadModal.jobId) {
+                            return {
+                                ...job,
+                                batches: job.batches?.map(batch => {
+                                    if (batch.id === uploadModal.batchId) {
+                                        return {
+                                            ...batch,
+                                            candidates: [...batch.candidates, ...uploadedCandidates]
+                                        };
+                                    }
+                                    return batch;
+                                })
+                            };
+                        }
+                        return job;
+                    }));
+
+                    successCount++;
+                } catch (err) {
+                    console.error(`Failed to upload ${file.name}:`, err);
+                    failCount++;
                 }
-                return job;
-            }));
+            }
 
-            setIsProcessing(false);
             setUploadModal(null);
             setSelectedFiles([]);
-            alert(`Successfully uploaded ${uploadedCandidates.length} CVs!`);
+            alert(`Upload Complete!\nSuccess: ${successCount}\nFailed: ${failCount}`);
         } catch (err: any) {
             setError(err.message || 'Failed to upload CVs');
-            alert('Failed to upload CVs: ' + (err.message || 'Unknown error'));
+            alert('Critical error during upload: ' + (err.message || 'Unknown error'));
+        } finally {
             setIsProcessing(false);
+            setProcessingStatus(null);
         }
     };
 
@@ -279,7 +291,7 @@ const Jobs = () => {
                                 Recruitment Batches
                             </h4>
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                                {job.batches.map(batch => (
+                                {job.batches?.map(batch => (
                                     <div key={batch.id} className="bg-white p-4 rounded-lg border border-slate-200 hover:border-blue-300 transition-colors group relative">
                                         <div className="flex justify-between items-start mb-2">
                                             <h5 className="font-medium text-slate-800">{batch.name}</h5>
@@ -359,7 +371,7 @@ const Jobs = () => {
                                     className={`px-4 py-2 bg-blue-600 text-white rounded-lg font-medium transition-colors flex items-center gap-2 ${(selectedFiles.length === 0 || isProcessing) ? 'opacity-50 cursor-not-allowed' : 'hover:bg-blue-700'
                                         }`}
                                 >
-                                    {isProcessing ? 'Processing...' : 'Start Screening'}
+                                    {isProcessing ? (processingStatus || 'Processing...') : 'Start Screening'}
                                 </button>
                             </div>
                         </div>
